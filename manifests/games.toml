@@ -56,7 +56,7 @@ download_url = "https://reshade.me/downloads/ReShade_Setup_6.4.2.exe"
 name = "TFCInstaller"
 description = "Instalador de texturas e patches para o primeiro Dishonored"
 winetricks = ["dotnet48"]
-download_url = "https://www.nexusmods.com/dishonored/mods/14"
+download_url = "https://www.nexusmods.com/dishonored/mods/14?tab=files"
 
 # ── Dishonored 2 ─────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ heroic_names = ["Dishonored 2"]
 name = "VoidInstaller"
 description = "Ferramenta principal para instalação de mods em Dishonored 2 (Void Engine)"
 winetricks = ["dotnet6"]
-download_url = "https://www.nexusmods.com/dishonored2/mods/40"
+download_url = "https://www.nexusmods.com/dishonored2/mods/40?tab=files"
 
 [games.dishonored2.tools.cheat_engine]
 name = "Cheat Engine / Treinadores"
