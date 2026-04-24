@@ -161,13 +161,43 @@ impl SimpleComponent for AppModel {
                     add_css_class: "title-4",
                 },
 
-                gtk::Entry {
-                    set_placeholder_text: Some(&crate::i18n::t("wine_prefix_placeholder")),
-                    #[watch]
-                    set_text: &model.prefix_path,
-                    connect_changed[sender] => move |entry| {
-                        sender.input(AppMsg::PrefixPathChanged(entry.text().to_string()));
-                    }
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 8,
+
+                    gtk::Entry {
+                        set_placeholder_text: Some(&crate::i18n::t("wine_prefix_placeholder")),
+                        set_hexpand: true,
+                        #[watch]
+                        set_text: &model.prefix_path,
+                        connect_changed[sender] => move |entry| {
+                            sender.input(AppMsg::PrefixPathChanged(entry.text().to_string()));
+                        }
+                    },
+
+                    gtk::Button {
+                        set_label: "📂",
+                        set_tooltip_text: Some(&crate::i18n::t("browse_prefix_tooltip")),
+                        connect_clicked[sender] => move |btn| {
+                            let dialog = gtk::FileDialog::new();
+                            dialog.set_title(&crate::i18n::t("select_wine_prefix"));
+                            let parent = btn.root().and_downcast::<gtk::Window>();
+                            let sender = sender.clone();
+                            dialog.select_folder(
+                                parent.as_ref(),
+                                None::<&relm4::gtk::gio::Cancellable>,
+                                move |result| {
+                                    if let Ok(file) = result {
+                                        if let Some(path) = file.path() {
+                                            sender.input(AppMsg::PrefixPathChanged(
+                                                path.to_string_lossy().to_string(),
+                                            ));
+                                        }
+                                    }
+                                },
+                            );
+                        }
+                    },
                 },
 
                 gtk::DropDown {
@@ -335,16 +365,26 @@ impl SimpleComponent for AppModel {
             AppMsg::InstallDependencies => {
                 // Bloquear instalação se não tem prefixo válido
                 if self.prefix_path.is_empty() {
-                    self.status_message = crate::i18n::t("no_wine_prefix");
+                    let msg = crate::i18n::t("no_wine_prefix");
+                    self.status_message = msg.clone();
+                    self.install_log.clear();
+                    self.install_log.push(msg);
+                    self.install_log_buffer.set_text(&self.install_log.join("\n"));
+                    self.install_log_visible = true;
                     return;
                 }
-                
+
                 // Verificar se o prefixo existe no disco
                 if !std::path::Path::new(&self.prefix_path).exists() {
-                    self.status_message = crate::i18n::t_prefix_not_found(&self.prefix_path);
+                    let msg = crate::i18n::t_prefix_not_found(&self.prefix_path);
+                    self.status_message = msg.clone();
+                    self.install_log.clear();
+                    self.install_log.push(msg);
+                    self.install_log_buffer.set_text(&self.install_log.join("\n"));
+                    self.install_log_visible = true;
                     return;
                 }
-                
+
                 self.is_installing = true;
                 self.status_message = crate::i18n::t("installing_dependencies");
                 self.install_log.clear();

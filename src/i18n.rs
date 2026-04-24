@@ -165,7 +165,19 @@ pub fn t(key: &str) -> String {
             Language::Italian => "🏁 Completamento configurazione...",
             Language::English => "🏁 Finalizing setup...",
         },
-        
+        "browse_prefix_tooltip" => match lang {
+            Language::Portuguese => "Escolher diretório do prefixo Wine",
+            Language::Spanish => "Elegir directorio del prefijo Wine",
+            Language::Italian => "Scegli la cartella del prefisso Wine",
+            Language::English => "Choose the Wine prefix directory",
+        },
+        "select_wine_prefix" => match lang {
+            Language::Portuguese => "Selecionar prefixo Wine",
+            Language::Spanish => "Seleccionar prefijo Wine",
+            Language::Italian => "Seleziona prefisso Wine",
+            Language::English => "Select Wine prefix",
+        },
+
         // Se a chave não for encontrada, retorna ela mesma
         _ => return key.to_string(),
     };

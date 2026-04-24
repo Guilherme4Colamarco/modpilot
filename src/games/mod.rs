@@ -1,38 +1,67 @@
-use steamlocate::SteamDir;
 use serde::Deserialize;
 use std::fs;
+use steamlocate::SteamDir;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct HeroicGogConfig {
     installed: Vec<HeroicGogGame>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 struct HeroicGogGame {
     install_path: String,
+    // O JSON do Heroic usa camelCase aqui.
+    #[serde(rename = "appName")]
     app_name: String,
 }
 
-fn get_heroic_prefix(app_name: &str) -> Option<String> {
+fn heroic_config_roots() -> Vec<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+    vec![
+        format!("{}/.config/heroic", home),
+        // Flatpak
+        format!(
+            "{}/.var/app/com.heroicgameslauncher.hgl/config/heroic",
+            home
+        ),
+    ]
+}
 
-    let config_path = format!("{}/.config/heroic/GamesConfig/{}.json", home, app_name);
-    if let Ok(content) = fs::read_to_string(&config_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            // Heroic aninha os dados dentro de json[app_name]{...}
-            let game_config = json.get(app_name).unwrap_or(&json);
-            if let Some(prefix) = game_config.get("winePrefix").and_then(|p| p.as_str()) {
-                if !prefix.is_empty() {
-                    return Some(prefix.to_string());
+fn heroic_default_prefix_roots() -> Vec<String> {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
+    vec![
+        format!("{}/Games/Heroic/Prefixes/default", home),
+        format!("{}/.local/share/heroic/Prefixes", home),
+        format!(
+            "{}/.var/app/com.heroicgameslauncher.hgl/data/heroic/Prefixes",
+            home
+        ),
+    ]
+}
+
+fn get_heroic_prefix(app_name: &str) -> Option<String> {
+    // 1. Lê o GamesConfig específico, se existir
+    for root in heroic_config_roots() {
+        let config_path = format!("{}/GamesConfig/{}.json", root, app_name);
+        if let Ok(content) = fs::read_to_string(&config_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                // Heroic aninha os dados dentro de json[app_name]{...}
+                let game_config = json.get(app_name).unwrap_or(&json);
+                if let Some(prefix) = game_config.get("winePrefix").and_then(|p| p.as_str()) {
+                    if !prefix.is_empty() && std::path::Path::new(prefix).exists() {
+                        return Some(prefix.to_string());
+                    }
                 }
             }
         }
     }
 
-    // Fallback: prefixo padrão do Heroic
-    let default_prefix = format!("{}/.local/share/heroic/Prefixes/{}", home, app_name);
-    if std::path::Path::new(&default_prefix).exists() {
-        return Some(default_prefix);
+    // 2. Fallback: procura nos diretórios padrão de prefixos
+    for root in heroic_default_prefix_roots() {
+        let candidate = format!("{}/{}", root, app_name);
+        if std::path::Path::new(&candidate).exists() {
+            return Some(candidate);
+        }
     }
 
     None
@@ -59,7 +88,6 @@ pub fn scan_steam_games() -> Vec<(String, Option<String>, Option<u32>)> {
                             .unwrap_or("Desconhecido")
                             .to_string();
 
-                        // Detecção do prefixo Steam: compatdata/{app_id}/pfx
                         let app_id = app_info.app_id;
                         let prefix_path = library
                             .path()
@@ -90,65 +118,98 @@ pub fn scan_steam_games() -> Vec<(String, Option<String>, Option<u32>)> {
 
 pub fn scan_heroic_games() -> Vec<(String, Option<String>, Option<u32>)> {
     let mut games = Vec::new();
-    let home = std::env::var("HOME").unwrap_or_else(|_| "~".to_string());
-    
-    // GOG Store (Array)
-    let gog_path = format!("{}/.config/heroic/gog_store/installed.json", home);
-    if let Ok(content) = fs::read_to_string(&gog_path) {
-        if let Ok(config) = serde_json::from_str::<HeroicGogConfig>(&content) {
-            for game in config.installed {
-                let path = std::path::Path::new(&game.install_path);
-                if path.exists() {
-                    if let Some(name) = path.file_name() {
-                        if let Some(name_str) = name.to_str() {
-                            let prefix = get_heroic_prefix(&game.app_name);
-                            games.push((format!("{} (Heroic GOG)", name_str), prefix, None));
-                        }
+
+    for root in heroic_config_roots() {
+        if !std::path::Path::new(&root).exists() {
+            continue;
+        }
+
+        // GOG
+        let gog_path = format!("{}/gog_store/installed.json", root);
+        if let Ok(content) = fs::read_to_string(&gog_path) {
+            match serde_json::from_str::<HeroicGogConfig>(&content) {
+                Ok(config) => {
+                    for game in config.installed {
+                        let path = std::path::Path::new(&game.install_path);
+                        let name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("Desconhecido")
+                            .to_string();
+                        let prefix = get_heroic_prefix(&game.app_name);
+                        games.push((format!("{} (Heroic GOG)", name), prefix, None));
                     }
                 }
+                Err(e) => eprintln!("Erro ao parsear {}: {}", gog_path, e),
             }
         }
-    }
 
-    // Epic / Legendary (Dicionário)
-    let legendary_path = format!("{}/.config/heroic/legendaryConfig/legendary/installed.json", home);
-    if let Ok(content) = fs::read_to_string(&legendary_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(obj) = json.as_object() {
-                for (key, game_data) in obj {
-                    if let Some(install_path) = game_data.get("install_path").and_then(|p| p.as_str()) {
-                        let path = std::path::Path::new(install_path);
-                        if path.exists() {
-                            let title = game_data.get("title").and_then(|t| t.as_str())
+        // Epic / Legendary
+        let legendary_path = format!("{}/legendaryConfig/legendary/installed.json", root);
+        if let Ok(content) = fs::read_to_string(&legendary_path) {
+            match serde_json::from_str::<serde_json::Value>(&content) {
+                Ok(json) => {
+                    if let Some(obj) = json.as_object() {
+                        for (key, game_data) in obj {
+                            let install_path = game_data
+                                .get("install_path")
+                                .and_then(|p| p.as_str())
+                                .unwrap_or("");
+                            let path = std::path::Path::new(install_path);
+                            let title = game_data
+                                .get("title")
+                                .and_then(|t| t.as_str())
                                 .or_else(|| path.file_name().and_then(|n| n.to_str()))
-                                .unwrap_or("Desconhecido");
+                                .unwrap_or("Desconhecido")
+                                .to_string();
                             let prefix = get_heroic_prefix(key);
                             games.push((format!("{} (Heroic Epic)", title), prefix, None));
                         }
                     }
                 }
+                Err(e) => eprintln!("Erro ao parsear {}: {}", legendary_path, e),
             }
         }
-    }
 
-    // Amazon / Nile (Array similar ao GOG na maioria das vezes, mas checando como Value genérico)
-    let nile_path = format!("{}/.config/heroic/nile_store/installed.json", home);
-    if let Ok(content) = fs::read_to_string(&nile_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
-            if let Some(arr) = json.as_array() {
-                for game_data in arr {
-                    if let Some(install_path) = game_data.get("install_path").and_then(|p| p.as_str()) {
-                        let path = std::path::Path::new(install_path);
-                        if path.exists() {
-                            if let Some(name) = path.file_name() {
-                                if let Some(name_str) = name.to_str() {
-                                    let app_name = game_data.get("app_name").and_then(|a| a.as_str()).unwrap_or("");
-                                    let prefix = get_heroic_prefix(app_name);
-                                    games.push((format!("{} (Heroic Amazon)", name_str), prefix, None));
-                                }
-                            }
-                        }
+        // Amazon / Nile — aceita tanto array solto quanto {"installed": [...]}
+        let nile_candidates = [
+            format!("{}/nile_config/nile/installed.json", root),
+            format!("{}/nile_store/installed.json", root),
+        ];
+        for nile_path in &nile_candidates {
+            let Ok(content) = fs::read_to_string(nile_path) else {
+                continue;
+            };
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                let iter: Box<dyn Iterator<Item = &serde_json::Value>> =
+                    if let Some(arr) = json.as_array() {
+                        Box::new(arr.iter())
+                    } else if let Some(arr) = json.get("installed").and_then(|v| v.as_array()) {
+                        Box::new(arr.iter())
+                    } else {
+                        continue;
+                    };
+                for game_data in iter {
+                    let install_path = game_data
+                        .get("install_path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("");
+                    let path = std::path::Path::new(install_path);
+                    if !path.exists() {
+                        continue;
                     }
+                    let name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("Desconhecido")
+                        .to_string();
+                    let app_name = game_data
+                        .get("app_name")
+                        .or_else(|| game_data.get("id"))
+                        .and_then(|a| a.as_str())
+                        .unwrap_or("");
+                    let prefix = get_heroic_prefix(app_name);
+                    games.push((format!("{} (Heroic Amazon)", name), prefix, None));
                 }
             }
         }
