@@ -44,7 +44,12 @@ name = "ReShade"
 description = "Post-processing e filtros visuais"
 winetricks = ["vcrun2022", "d3dcompiler_47"]
 download_url = "https://reshade.me/downloads/ReShade_Setup_6.4.2.exe"
-executable_path = "drive_c/Program Files/ReShade/ReShade.exe"
+
+[games.dishonored.tools.tfc_installer]
+name = "TFCInstaller"
+description = "Instalador de texturas e patches para o primeiro Dishonored"
+winetricks = ["dotnet48"]
+download_url = "https://www.nexusmods.com/dishonored/mods/14"
 
 # ── Dishonored 2 ─────────────────────────────────────────────
 
@@ -53,6 +58,12 @@ name = "Dishonored 2"
 
 [games.dishonored2.identifiers]
 heroic_names = ["Dishonored 2"]
+
+[games.dishonored2.tools.void_installer]
+name = "VoidInstaller"
+description = "Ferramenta principal para instalação de mods em Dishonored 2 (Void Engine)"
+winetricks = ["dotnet6"]
+download_url = "https://www.nexusmods.com/dishonored2/mods/40"
 
 [games.dishonored2.tools.cheat_engine]
 name = "Cheat Engine / Treinadores"

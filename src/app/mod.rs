@@ -210,6 +210,30 @@ fn build_ui(app: &Application) {
     widgets.tools_combo.set_active(Some(0));
     widgets.cmds_combo.set_active(Some(0));
     
+    // Interceptar o fechamento da janela
+    window.connect_delete_event(clone!(@strong state => move |win, _| {
+        let is_installing = state.borrow().is_installing;
+        if is_installing {
+            let dialog = MessageDialog::new(
+                Some(win),
+                DialogFlags::MODAL,
+                MessageType::Warning,
+                ButtonsType::YesNo,
+                &crate::i18n::t("confirm_close"),
+            );
+            dialog.connect_response(clone!(@strong win => move |dialog, response| {
+                dialog.close();
+                if response == ResponseType::Yes {
+                    win.close();
+                }
+            }));
+            dialog.show_all();
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    }));
+
     update_ui(&state.borrow(), &widgets);
     window.show_all();
     widgets.log_scroll.hide();
@@ -310,7 +334,7 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
             
             if games.is_empty() {
                 state.status_message = crate::i18n::t("no_games_found");
-                widgets.games_combo.append_text("No games found"); 
+                widgets.games_combo.append_text(&crate::i18n::t("no_games_found_short")); 
                 widgets.games_combo.set_active(Some(0));
             } else {
                 for (game_name, _prefix, _app_id) in &games {
@@ -481,8 +505,8 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 FileChooserAction::SelectFolder,
             );
             dialog.add_buttons(&[
-                ("Cancel", ResponseType::Cancel),
-                ("Open", ResponseType::Accept),
+                ("_Cancel", ResponseType::Cancel),
+                ("_Open", ResponseType::Accept),
             ]);
             let s = sender.clone();
             dialog.connect_response(move |dialog, response| {

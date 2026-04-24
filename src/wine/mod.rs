@@ -1,4 +1,5 @@
 use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
 
 /// Filtra ruído do Wine (fixme:, warn:, trace:, etc.) do stderr e retorna
 /// apenas linhas que representam erros reais. Retorna None se tudo for ruído.
@@ -18,7 +19,6 @@ fn extract_real_error(stderr: &str) -> Option<String> {
         Some(real_errors.last().unwrap_or(&"erro desconhecido").to_string())
     }
 }
-use std::io::{BufRead, BufReader};
 
 /// Verifica se as ferramentas necessárias (wine, winetricks) estão no PATH.
 /// Retorna uma lista das que estão faltando.
