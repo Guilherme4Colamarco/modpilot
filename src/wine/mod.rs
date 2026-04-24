@@ -1,4 +1,23 @@
 use std::process::{Command, Stdio};
+
+/// Filtra ruído do Wine (fixme:, warn:, trace:, etc.) do stderr e retorna
+/// apenas linhas que representam erros reais. Retorna None se tudo for ruído.
+fn extract_real_error(stderr: &str) -> Option<String> {
+    let noise_prefixes = ["fixme:", "warn:", "trace:", "info:", "err:fixme", "winediag:"];
+    let real_errors: Vec<&str> = stderr
+        .lines()
+        .filter(|l| {
+            let lower = l.trim().to_lowercase();
+            !noise_prefixes.iter().any(|p| lower.contains(p))
+                && !l.trim().is_empty()
+        })
+        .collect();
+    if real_errors.is_empty() {
+        None
+    } else {
+        Some(real_errors.last().unwrap_or(&"erro desconhecido").to_string())
+    }
+}
 use std::io::{BufRead, BufReader};
 
 /// Verifica se as ferramentas necessárias (wine, winetricks) estão no PATH.
@@ -57,8 +76,9 @@ where
                     progress_callback(format!("✅ {} instalado com sucesso.", dep));
                 } else {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    let last_line = stderr.lines().last().unwrap_or("erro desconhecido");
-                    progress_callback(crate::i18n::t_failed_install(dep, last_line));
+                    let err_msg = extract_real_error(&stderr)
+                        .unwrap_or_else(|| "erro desconhecido".to_string());
+                    progress_callback(crate::i18n::t_failed_install(dep, &err_msg));
                 }
             }
             Err(e) => {
@@ -103,8 +123,12 @@ where
                     }
                     Ok(output) => {
                         let stderr = String::from_utf8_lossy(&output.stderr);
-                        let last_line = stderr.lines().last().unwrap_or("erro desconhecido");
-                        progress_callback(format!("⚠️  Instalador retornou erro: {}", last_line));
+                        if let Some(err_msg) = extract_real_error(&stderr) {
+                            progress_callback(format!("⚠️  Instalador retornou erro: {}", err_msg));
+                        } else {
+                            // Só ruído do Wine — tratar como sucesso
+                            progress_callback(crate::i18n::t("setup_finished"));
+                        }
                     }
                     Err(e) => {
                         progress_callback(format!("❌ Erro ao executar instalador: {}", e));
