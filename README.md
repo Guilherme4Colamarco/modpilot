@@ -1,10 +1,10 @@
 # ModPilot
 
-Gerenciador de mods para jogos Steam no Linux.
+Gerenciador de mods para jogos Steam e Heroic Games Launcher no Linux.
 
 ## Objetivo
 
-Facilitar a instalação e gerenciamento de mods em jogos Steam no Linux, automatizando a configuração de prefixos Wine/Proton e a instalação de dependências como `winetricks`.
+Facilitar a instalação e gerenciamento de mods em jogos no Linux, com suporte a launchers como **Steam** e **Heroic** (Epic Games, GOG, Amazon Games), automatizando a configuração de prefixos Wine/Proton e a instalação de dependências via `winetricks`.
 
 ## Status
 
@@ -14,6 +14,7 @@ Facilitar a instalação e gerenciamento de mods em jogos Steam no Linux, automa
 
 - [x] Menu interativo CLI
 - [ ] Detecção automática de jogos Steam instalados
+- [ ] Detecção automática de jogos Heroic (Epic, GOG, Amazon)
 - [ ] Gerenciamento de mods por jogo
 - [ ] Instalação de dependências Wine (`vcrun2022`, `dotnet48`, etc.)
 - [ ] Interface gráfica GTK
@@ -29,7 +30,7 @@ cargo run
 ## Requisitos
 
 - Rust (edition 2024)
-- Steam instalado
+- Steam e/ou Heroic Games Launcher instalados
 - Wine / Proton (para instalação de dependências)
 
 ## Licença
