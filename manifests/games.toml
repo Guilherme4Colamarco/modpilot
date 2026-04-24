@@ -1,0 +1,112 @@
+# ══════════════════════════════════════════════════════════════
+# GamePiLot — Manifesto Unificado de Jogos e Ferramentas de Mod
+# ══════════════════════════════════════════════════════════════
+
+# ── Grand Theft Auto V ───────────────────────────────────────
+
+[games.gtav]
+name = "Grand Theft Auto V"
+
+[games.gtav.identifiers]
+steam_app_id = 271590
+heroic_names = ["Grand Theft Auto V", "GTA V"]
+
+[games.gtav.tools.openiv]
+name = "OpenIV"
+description = "Gerenciador principal para mods da engine RAGE"
+winetricks = ["dotnet48", "corefonts", "msxml6", "d3dcompiler_47"]
+download_url = "https://example.com/openivsetup.exe"
+executable_path = "drive_c/Program Files/OpenIV/OpenIV.exe"
+
+[games.gtav.tools.scripthookv]
+name = "ScriptHookV"
+description = "Permite o uso de scripts .asi no jogo"
+winetricks = ["vcrun2022"]
+
+# ── Dishonored ───────────────────────────────────────────────
+
+[games.dishonored]
+name = "Dishonored"
+
+[games.dishonored.identifiers]
+steam_app_id = 205100
+heroic_names = ["Dishonored"]
+
+[games.dishonored.tools.we_mod]
+name = "WeMod / Treinadores"
+description = "Dependências comuns para treinadores e mods que injetam DLLs"
+winetricks = ["dotnet48", "vcrun2022"]
+download_url = "https://api.wemod.com/client/releases/stable/download"
+executable_path = "drive_c/Program Files/WeMod/WeMod.exe"
+
+[games.dishonored.tools.reshade]
+name = "ReShade"
+description = "Post-processing e filtros visuais"
+winetricks = ["vcrun2022", "d3dcompiler_47"]
+download_url = "https://reshade.me/downloads/ReShade_Setup_6.4.2.exe"
+executable_path = "drive_c/Program Files/ReShade/ReShade.exe"
+
+# ── Dishonored 2 ─────────────────────────────────────────────
+
+[games.dishonored2]
+name = "Dishonored 2"
+
+[games.dishonored2.identifiers]
+heroic_names = ["Dishonored 2"]
+
+[games.dishonored2.tools.cheat_engine]
+name = "Cheat Engine / Treinadores"
+description = "Dependências para treinadores e tabelas de Cheat Engine"
+winetricks = ["dotnet48", "vcrun2022"]
+
+[games.dishonored2.tools.reshade]
+name = "ReShade"
+description = "Post-processing e filtros visuais"
+winetricks = ["vcrun2022", "d3dcompiler_47"]
+download_url = "https://reshade.me/downloads/ReShade_Setup_6.4.2.exe"
+executable_path = "drive_c/Program Files/ReShade/ReShade.exe"
+
+# ── HITMAN World of Assassination ────────────────────────────
+
+[games.hitman3]
+name = "HITMAN World of Assassination"
+
+[games.hitman3.identifiers]
+steam_app_id = 1659040
+heroic_names = ["HITMAN 3", "HITMAN World of Assassination"]
+
+[games.hitman3.tools.simple_mod_framework]
+name = "Simple Mod Framework (SMF)"
+description = "Gerenciador de mods principal para Hitman 3"
+winetricks = ["dotnetdesktop7", "d3dcompiler_47"]
+download_url = "https://github.com/atampy25/simple-mod-framework/releases/latest/download/Mod-Manager.exe"
+executable_path = "drive_c/Program Files/Simple Mod Framework/Mod Manager.exe"
+
+# ── The Elder Scrolls V: Skyrim ──────────────────────────────
+
+[games.skyrim]
+name = "The Elder Scrolls V"
+
+[games.skyrim.identifiers]
+steam_app_id = 489830
+heroic_names = ["Skyrim Anniversary Edition", "Skyrim Special Edition", "The Elder Scrolls V"]
+
+[games.skyrim.tools.skse]
+name = "SKSE64 (Script Extender)"
+description = "Engine de scripts necessário pela maioria dos mods"
+winetricks = ["vcrun2022"]
+download_url = "https://skse.silverlock.org/beta/skse64_2_02_06.7z"
+
+[games.skyrim.tools.vortex]
+name = "Vortex Mod Manager"
+description = "Gerenciador de mods oficial do Nexus Mods"
+winetricks = ["dotnet48", "vcrun2022", "d3dcompiler_47"]
+download_url = "https://github.com/Nexus-Mods/Vortex/releases/latest/download/vortex-setup-1.13.8.exe"
+executable_path = "drive_c/Program Files/Black Tree Gaming Ltd/Vortex/Vortex.exe"
+
+[games.skyrim.tools.modorganizer2]
+name = "Mod Organizer 2 (MO2)"
+description = "Gerenciador avançado de mods com sistema de perfis virtuais"
+winetricks = ["dotnet48", "vcrun2022"]
+download_url = "https://github.com/ModOrganizer2/modorganizer/releases/latest/download/Mod.Organizer-2.5.3.exe"
+executable_path = "drive_c/Modding/MO2/ModOrganizer.exe"

@@ -7,7 +7,7 @@ pub struct AppModel {
     selected_command: String,
     is_installing: bool,
     detected_games: gtk::StringList,
-    install_progress: String,
+    install_log: Vec<String>,
     manifests: Vec<crate::manifests::GameManifest>,
     available_tools: gtk::StringList,
     current_tools: Vec<crate::manifests::ModTool>,
@@ -16,7 +16,9 @@ pub struct AppModel {
     selected_tool_name: String,
     selected_tool_executable: Option<String>,
     tool_is_installed: bool,
-    scanned_game_names: Vec<String>,
+    scanned_games: Vec<(String, Option<String>, Option<u32>)>,
+    install_log_buffer: gtk::TextBuffer,
+    install_log_visible: bool,
 }
 
 #[derive(Debug)]
@@ -72,7 +74,7 @@ impl SimpleComponent for AppModel {
                     set_spacing: 12,
 
                     gtk::Button {
-                        set_label: "Escanear Jogos",
+                        set_label: &crate::i18n::t("scan_games"),
                         connect_clicked => AppMsg::ScanGames,
                     },
 
@@ -90,7 +92,7 @@ impl SimpleComponent for AppModel {
                     set_spacing: 12,
                     
                     gtk::Label {
-                        set_label: "Dependências (Mods):",
+                        set_label: &crate::i18n::t("dependencies_mods"),
                         set_halign: gtk::Align::Start,
                     },
 
@@ -110,9 +112,9 @@ impl SimpleComponent for AppModel {
                     gtk::Button {
                         #[watch]
                         set_label: &if model.selected_tool_name.is_empty() {
-                            "Instalar Ferramenta".to_string()
+                            crate::i18n::t("install_tool")
                         } else {
-                            format!("Instalar {}", model.selected_tool_name)
+                            crate::i18n::t_install(&model.selected_tool_name)
                         },
                         #[watch]
                         set_sensitive: !model.is_installing && !model.selected_tool_name.is_empty(),
@@ -121,7 +123,7 @@ impl SimpleComponent for AppModel {
 
                     gtk::Button {
                         #[watch]
-                        set_label: &format!("Lançar {} 🚀", model.selected_tool_name),
+                        set_label: &crate::i18n::t_launch(&model.selected_tool_name),
                         #[watch]
                         set_visible: !model.selected_tool_name.is_empty(),
                         #[watch]
@@ -130,17 +132,22 @@ impl SimpleComponent for AppModel {
                     }
                 },
 
-                gtk::Box {
-                    set_orientation: gtk::Orientation::Vertical,
-                    set_margin_top: 4,
-                    set_margin_bottom: 4,
+                // Log acumulativo com scroll
+                gtk::ScrolledWindow {
+                    set_vexpand: true,
+                    set_min_content_height: 150,
                     #[watch]
-                    set_visible: !model.install_progress.is_empty(),
+                    set_visible: model.install_log_visible,
 
-                    gtk::Label {
-                        #[watch]
-                        set_label: &format!("> {}", model.install_progress),
-                        set_halign: gtk::Align::Start,
+                    gtk::TextView {
+                        set_editable: false,
+                        set_monospace: true,
+                        set_wrap_mode: gtk::WrapMode::WordChar,
+                        set_top_margin: 8,
+                        set_bottom_margin: 8,
+                        set_left_margin: 8,
+                        set_right_margin: 8,
+                        set_buffer: Some(&model.install_log_buffer),
                     }
                 },
 
@@ -149,13 +156,15 @@ impl SimpleComponent for AppModel {
                 },
 
                 gtk::Label {
-                    set_label: "Ferramentas Wine",
+                    set_label: &crate::i18n::t("wine_tools"),
                     set_halign: gtk::Align::Start,
                     add_css_class: "title-4",
                 },
 
                 gtk::Entry {
-                    set_placeholder_text: Some("Caminho do prefixo Wine (ex: /home/user/.wine)"),
+                    set_placeholder_text: Some(&crate::i18n::t("wine_prefix_placeholder")),
+                    #[watch]
+                    set_text: &model.prefix_path,
                     connect_changed[sender] => move |entry| {
                         sender.input(AppMsg::PrefixPathChanged(entry.text().to_string()));
                     }
@@ -169,7 +178,7 @@ impl SimpleComponent for AppModel {
                 },
 
                 gtk::Button {
-                    set_label: "Executar Comando Wine",
+                    set_label: &crate::i18n::t("execute_wine_command"),
                     connect_clicked => AppMsg::ExecuteCommand,
                 }
             }
@@ -181,22 +190,32 @@ impl SimpleComponent for AppModel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        // Checar pré-requisitos ao iniciar
+        let missing = crate::wine::check_prerequisites();
+        let initial_status = if missing.is_empty() {
+            crate::i18n::t("welcome")
+        } else {
+            crate::i18n::t_tools_not_found(&missing.join(", "))
+        };
+
         let model = AppModel {
-            status_message: "Bem-vindo ao GamePiLot!".to_string(),
+            status_message: initial_status,
             prefix_path: String::new(),
             selected_command: "winecfg".to_string(),
             is_installing: false,
-            detected_games: gtk::StringList::new(&["Nenhum jogo escaneado"]),
-            install_progress: String::new(),
+            detected_games: gtk::StringList::new(&[&crate::i18n::t("no_games_scanned")]),
+            install_log: Vec::new(),
+            install_log_buffer: gtk::TextBuffer::new(None::<&gtk::TextTagTable>),
+            install_log_visible: false,
             manifests: crate::manifests::load_manifests(),
-            available_tools: gtk::StringList::new(&["Nenhum jogo selecionado"]),
+            available_tools: gtk::StringList::new(&[&crate::i18n::t("no_game_selected")]),
             current_tools: Vec::new(),
             selected_tool_deps: Vec::new(),
             selected_tool_download: None,
             selected_tool_name: String::new(),
             selected_tool_executable: None,
             tool_is_installed: false,
-            scanned_game_names: Vec::new(),
+            scanned_games: Vec::new(),
         };
 
         let widgets = view_output!();
@@ -204,22 +223,21 @@ impl SimpleComponent for AppModel {
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
             AppMsg::ScanGames => {
-                self.status_message = "Escaneando jogos...".to_string();
                 let games = crate::games::scan_all_games();
-                self.scanned_game_names = games.clone();
-                
                 self.detected_games.splice(0, self.detected_games.n_items(), &[]);
+                self.scanned_games = games.clone();
+                
                 if games.is_empty() {
-                    self.status_message = "Nenhum jogo encontrado.".to_string();
-                    self.detected_games.append("Nenhum jogo encontrado");
+                    self.status_message = crate::i18n::t("no_games_found");
+                    self.detected_games.append(&crate::i18n::t("no_games_found_short")); // You can map "no_games_found_short" in i18n
                 } else {
-                    self.status_message = format!("{} jogos encontrados.", games.len());
-                    for game in games {
-                        self.detected_games.append(&game);
+                    for (game_name, _prefix, _app_id) in &games {
+                        self.detected_games.append(game_name);
                     }
+                    self.status_message = crate::i18n::t_games_found(games.len());
                 }
             }
             AppMsg::GameSelected(index) => {
@@ -231,29 +249,60 @@ impl SimpleComponent for AppModel {
                 self.selected_tool_executable = None;
                 self.tool_is_installed = false;
                 
-                if let Some(game_name) = self.scanned_game_names.get(index as usize) {
-                    let mut found = false;
+                if let Some((game_name, prefix_opt, game_app_id)) = self.scanned_games.get(index as usize) {
+
+                    // Auto-preenche o prefix_path na interface
+                    if let Some(prefix) = prefix_opt {
+                        self.prefix_path = prefix.clone();
+                    } else {
+                        self.prefix_path.clear();
+                    }
+
+                    // Seleciona o manifest com a melhor pontuação de match.
+                    // steam_app_id exato = prioridade máxima;
+                    // match por substring usa o comprimento do nome para
+                    // evitar que "Dishonored" ganhe de "Dishonored 2".
+                    const SCORE_APP_ID: usize = usize::MAX;
+                    let mut best: Option<(&crate::manifests::GameManifest, usize)> = None;
+
                     for manifest in &self.manifests {
-                        let mut matches = game_name.contains(&manifest.name);
-                        if let Some(heroic_names) = &manifest.identifiers.heroic_names {
-                            for h_name in heroic_names {
-                                if game_name.contains(h_name) {
-                                    matches = true;
+                        let mut score = 0usize;
+
+                        if let (Some(mid), Some(gid)) =
+                            (&manifest.identifiers.steam_app_id, game_app_id)
+                        {
+                            if mid == gid {
+                                score = SCORE_APP_ID;
+                            }
+                        }
+
+                        if score < SCORE_APP_ID {
+                            if let Some(heroic_names) = &manifest.identifiers.heroic_names {
+                                for h in heroic_names {
+                                    if game_name.contains(h) && h.len() > score {
+                                        score = h.len();
+                                    }
                                 }
                             }
-                        }
-                        
-                        if matches {
-                            found = true;
-                            for (_key, tool) in &manifest.tools {
-                                self.current_tools.push(tool.clone());
-                                self.available_tools.append(&format!("{} - {}", tool.name, tool.description));
+                            if game_name.contains(&manifest.name) && manifest.name.len() > score {
+                                score = manifest.name.len();
                             }
-                            break;
+                        }
+
+                        if score > 0 && best.is_none_or(|(_, s)| score > s) {
+                            best = Some((manifest, score));
                         }
                     }
-                    if !found {
-                        self.available_tools.append("Nenhum manifesto de mod encontrado");
+
+                    if let Some((manifest, _)) = best {
+                        for tool in manifest.tools.values() {
+                            self.current_tools.push(tool.clone());
+                            self.available_tools
+                                .append(&format!("{} - {}", tool.name, tool.description));
+                        }
+                    } else {
+                        self.available_tools
+                            .append(&crate::i18n::t("no_mod_manifest_found"));
                     }
                 }
             }
@@ -264,9 +313,6 @@ impl SimpleComponent for AppModel {
                     self.selected_tool_name = tool.name.clone();
                     self.selected_tool_executable = tool.executable_path.clone();
                     
-                    // Simples verificação: se tivermos o prefix_path, checamos se existe
-                    // Caso contrário (como ainda não automatizamos a busca do prefixo), assumimos false
-                    // ou testamos no caminho absoluto
                     if let Some(exe) = &self.selected_tool_executable {
                         let path = std::path::Path::new(&self.prefix_path).join(exe);
                         self.tool_is_installed = path.exists();
@@ -277,44 +323,68 @@ impl SimpleComponent for AppModel {
             }
             AppMsg::LaunchTool => {
                 if let Some(exe) = &self.selected_tool_executable {
-                    self.status_message = format!("Iniciando {}...", self.selected_tool_name);
+                    self.status_message = crate::i18n::t_starting(&self.selected_tool_name);
                     let full_path = std::path::Path::new(&self.prefix_path).join(exe);
                     let path_str = full_path.to_string_lossy().to_string();
-                    let _ = crate::wine::execute_wine_command(&self.prefix_path, &path_str); 
+                    match crate::wine::execute_wine_command(&self.prefix_path, &path_str) {
+                        Ok(_) => self.status_message = crate::i18n::t_started(&self.selected_tool_name),
+                        Err(e) => self.status_message = crate::i18n::t_error_launching(&e.to_string()),
+                    }
                 }
             }
             AppMsg::InstallDependencies => {
-                self.is_installing = true;
-                self.status_message = "Instalando dependências...".to_string();
-                self.install_progress = "Preparando...".to_string();
+                // Bloquear instalação se não tem prefixo válido
+                if self.prefix_path.is_empty() {
+                    self.status_message = crate::i18n::t("no_wine_prefix");
+                    return;
+                }
                 
-                let sender = _sender.clone();
-                let progress_sender = _sender.clone();
+                // Verificar se o prefixo existe no disco
+                if !std::path::Path::new(&self.prefix_path).exists() {
+                    self.status_message = crate::i18n::t_prefix_not_found(&self.prefix_path);
+                    return;
+                }
+                
+                self.is_installing = true;
+                self.status_message = crate::i18n::t("installing_dependencies");
+                self.install_log.clear();
+                self.install_log.push(crate::i18n::t("preparing"));
+                self.install_log_buffer.set_text(&self.install_log.join("\n"));
+                self.install_log_visible = true;
+                
+                let progress_sender = sender.clone();
+                let done_sender = sender.clone();
                 let deps = self.selected_tool_deps.clone();
                 let download = self.selected_tool_download.clone();
-                let prefix = if self.prefix_path.is_empty() {
-                    "default_prefix".to_string()
-                } else {
-                    self.prefix_path.clone()
-                };
+                let prefix = self.prefix_path.clone();
                 
                 std::thread::spawn(move || {
                     crate::wine::install_dependencies(&prefix, deps, download, move |msg| {
                         progress_sender.input(AppMsg::InstallProgress(msg));
                     });
-                    sender.input(AppMsg::InstallFinished);
+                    done_sender.input(AppMsg::InstallFinished);
                 });
             }
+
             AppMsg::InstallProgress(msg) => {
-                self.install_progress = msg;
+                self.install_log.push(msg);
+                self.install_log_buffer.set_text(&self.install_log.join("\n"));
             }
             AppMsg::InstallFinished => {
                 self.is_installing = false;
-                self.status_message = "Dependências instaladas!".to_string();
-                self.install_progress = "Concluído.".to_string();
+                self.status_message = crate::i18n::t("dependencies_installed");
+                self.install_log.push(crate::i18n::t("done"));
+                self.install_log_buffer.set_text(&self.install_log.join("\n"));
+
+                // Reavaliar se a ferramenta foi instalada
+                if let Some(exe) = &self.selected_tool_executable {
+                    let full_path = std::path::Path::new(&self.prefix_path).join(exe);
+                    self.tool_is_installed = full_path.exists();
+                }
             }
             AppMsg::PrefixPathChanged(path) => {
                 self.prefix_path = path;
+                
                 // Reavaliar se a ferramenta tá instalada quando o prefixo muda
                 if let Some(exe) = &self.selected_tool_executable {
                     let full_path = std::path::Path::new(&self.prefix_path).join(exe);
@@ -329,13 +399,13 @@ impl SimpleComponent for AppModel {
             }
             AppMsg::ExecuteCommand => {
                 if self.prefix_path.is_empty() {
-                    self.status_message = "Por favor, insira o caminho do prefixo Wine.".to_string();
+                    self.status_message = crate::i18n::t("enter_wine_prefix");
                     return;
                 }
-                self.status_message = format!("Executando {}...", self.selected_command);
+                self.status_message = crate::i18n::t_executing(&self.selected_command);
                 match crate::wine::execute_wine_command(&self.prefix_path, &self.selected_command) {
-                    Ok(_) => self.status_message = format!("Comando {} iniciado.", self.selected_command),
-                    Err(e) => self.status_message = format!("Erro: {}", e),
+                    Ok(_) => self.status_message = crate::i18n::t_command_started(&self.selected_command),
+                    Err(e) => self.status_message = crate::i18n::t_error(&e.to_string()),
                 }
             }
         }
