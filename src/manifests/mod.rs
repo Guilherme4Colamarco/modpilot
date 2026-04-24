@@ -23,6 +23,8 @@ pub struct ModTool {
     pub winetricks: Vec<String>,
     pub download_url: Option<String>,
     pub executable_path: Option<String>,
+    pub nexus_game_domain: Option<String>,
+    pub nexus_mod_id: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]

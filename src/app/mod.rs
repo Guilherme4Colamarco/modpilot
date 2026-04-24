@@ -25,6 +25,7 @@ struct AppWidgets {
     browse_button: Button,
     scan_button: Button,
     exec_button: Button,
+    nexus_button: Button,
 }
 
 struct AppState {
@@ -42,6 +43,7 @@ struct AppState {
     scanned_games: Vec<(String, Option<String>, Option<u32>)>,
     install_log: Vec<String>,
     install_log_visible: bool,
+    config: crate::config::AppConfig,
 }
 
 enum AppMsg {
@@ -56,6 +58,8 @@ enum AppMsg {
     InstallProgress(String),
     InstallFinished,
     BrowsePrefix,
+    NexusConnect,
+    NexusValidated(Result<(String, String), String>), // (key, username) or error
 }
 
 pub fn run() {
@@ -145,6 +149,16 @@ fn build_ui(app: &Application) {
 
     let exec_button = Button::with_label(&crate::i18n::t("execute_wine_command"));
 
+    // ── Nexus Mods connection button ──────────────────────────────────────
+    let config_now = crate::config::AppConfig::load();
+    let nexus_label = if config_now.nexus_connected() {
+        crate::i18n::t("nexus_already_connected")
+    } else {
+        crate::i18n::t("nexus_not_connected")
+    };
+    let nexus_button = Button::with_label(&nexus_label);
+    nexus_button.set_tooltip_text(Some(&crate::i18n::t("nexus_connect_prompt")));
+
     main_box.pack_start(&status_box, false, false, 0);
     main_box.pack_start(&games_box, false, false, 0);
     main_box.pack_start(&tools_box, false, false, 0);
@@ -155,6 +169,7 @@ fn build_ui(app: &Application) {
     main_box.pack_start(&prefix_box, false, false, 0);
     main_box.pack_start(&cmds_combo, false, false, 0);
     main_box.pack_start(&exec_button, false, false, 0);
+    main_box.pack_start(&nexus_button, false, false, 0);
 
     window.add(&main_box);
 
@@ -173,6 +188,7 @@ fn build_ui(app: &Application) {
         browse_button,
         scan_button,
         exec_button,
+        nexus_button,
     };
 
     let missing = crate::wine::check_prerequisites();
@@ -197,6 +213,7 @@ fn build_ui(app: &Application) {
         scanned_games: Vec::new(),
         install_log: Vec::new(),
         install_log_visible: false,
+        config: crate::config::AppConfig::load(),
     };
 
     let state = Rc::new(RefCell::new(state));
@@ -309,6 +326,12 @@ fn setup_signals(widgets: &AppWidgets, sender: &async_channel::Sender<AppMsg>) {
         .exec_button
         .connect_clicked(clone!(@strong sender => move |_| {
             let _ = sender.send_blocking(AppMsg::ExecuteCommand);
+        }));
+
+    widgets
+        .nexus_button
+        .connect_clicked(clone!(@strong sender => move |_| {
+            let _ = sender.send_blocking(AppMsg::NexusConnect);
         }));
 }
 
@@ -503,11 +526,49 @@ fn handle_msg(
                 let s_prog = sender.clone();
                 let s_done = sender.clone();
                 let deps = state.selected_tool_deps.clone();
-                let download = state.selected_tool_download.clone();
                 let prefix = state.prefix_path.clone();
 
+                // Obter metadados do Nexus Mods, se aplicável
+                let nexus_domain = state.current_tools.iter()
+                    .find(|t| t.name == state.selected_tool_name)
+                    .and_then(|t| t.nexus_game_domain.clone());
+                let nexus_id = state.current_tools.iter()
+                    .find(|t| t.name == state.selected_tool_name)
+                    .and_then(|t| t.nexus_mod_id);
+                
+                let static_download = state.selected_tool_download.clone();
+                let api_key = state.config.nexus.api_key.clone();
+
                 std::thread::spawn(move || {
-                    crate::wine::install_dependencies(&prefix, deps, download, move |msg| {
+                    let mut final_download_url = static_download;
+
+                    // Se temos dados do Nexus e uma chave conectada, buscar o link dinamicamente!
+                    if let (Some(domain), Some(mod_id), Some(key)) = (nexus_domain, nexus_id, api_key) {
+                        let _ = s_prog.send_blocking(AppMsg::InstallProgress(
+                            format!("🔍 {} (ID: {}) no Nexus Mods...", crate::i18n::t("nexus_connecting"), mod_id)
+                        ));
+
+                        match crate::nexus::get_latest_file(&key, &domain, mod_id) {
+                            Ok((file_id, file_name)) => {
+                                let _ = s_prog.send_blocking(AppMsg::InstallProgress(
+                                    format!("✅ Encontrado: {} (ID: {})", file_name, file_id)
+                                ));
+                                match crate::nexus::get_download_url(&key, &domain, mod_id, file_id) {
+                                    Ok(url) => {
+                                        final_download_url = Some(url);
+                                    }
+                                    Err(e) => {
+                                        let _ = s_prog.send_blocking(AppMsg::InstallProgress(format!("❌ Erro ao gerar link: {}", e)));
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                let _ = s_prog.send_blocking(AppMsg::InstallProgress(format!("❌ Erro ao buscar mod no Nexus: {}", e)));
+                            }
+                        }
+                    }
+
+                    crate::wine::install_dependencies(&prefix, deps, final_download_url, move |msg| {
                         let _ = s_prog.send_blocking(AppMsg::InstallProgress(msg));
                     });
                     let _ = s_done.send_blocking(AppMsg::InstallFinished);
@@ -591,6 +652,118 @@ fn handle_msg(
                             crate::i18n::t_command_started(&state.selected_command)
                     }
                     Err(e) => state.status_message = crate::i18n::t_error(&e.to_string()),
+                }
+            }
+        }
+        AppMsg::NexusConnect => {
+            drop(state); // libera borrow antes de abrir dialog
+            let state_ref = state_rc.borrow();
+            let already_connected = state_ref.config.nexus_connected();
+            let win = widgets.window.clone();
+            let nexus_btn = widgets.nexus_button.clone();
+            drop(state_ref);
+
+            if already_connected {
+                // Desconectar
+                let dialog = MessageDialog::new(
+                    Some(&win),
+                    DialogFlags::MODAL,
+                    MessageType::Question,
+                    ButtonsType::YesNo,
+                    &format!("{} {}?", crate::i18n::t("nexus_disconnect"), "Nexus Mods"),
+                );
+                let state_clone = Rc::clone(state_rc);
+                dialog.connect_response(move |d, resp| {
+                    d.close();
+                    if resp == ResponseType::Yes {
+                        let mut s = state_clone.borrow_mut();
+                        s.config.nexus.api_key = None;
+                        s.config.save();
+                        nexus_btn.set_label(&crate::i18n::t("nexus_not_connected"));
+                    }
+                });
+                dialog.show_all();
+            } else {
+                // Dialog de conexão (Alex UI)
+                let dialog = gtk::Dialog::with_buttons(
+                    Some("🔑 Nexus Mods"),
+                    Some(&win),
+                    DialogFlags::MODAL | DialogFlags::DESTROY_WITH_PARENT,
+                    &[
+                        (&crate::i18n::t("nexus_get_key"), ResponseType::Help),
+                        (&crate::i18n::t("nexus_connect"), ResponseType::Ok),
+                        ("Cancel", ResponseType::Cancel),
+                    ],
+                );
+                let content = dialog.content_area();
+                content.set_spacing(8);
+                content.set_margin_start(12);
+                content.set_margin_end(12);
+                content.set_margin_top(8);
+                content.set_margin_bottom(8);
+
+                let prompt = Label::new(Some(&crate::i18n::t("nexus_connect_prompt")));
+                prompt.set_line_wrap(true);
+                prompt.set_halign(Align::Start);
+
+                let key_entry = Entry::new();
+                key_entry.set_placeholder_text(Some(&crate::i18n::t("nexus_key_placeholder")));
+                key_entry.set_visibility(false); // esconde como senha
+                key_entry.set_hexpand(true);
+
+                let info = Label::new(Some("ℹ️  nexusmods.com → Perfil → API → Gerar chave"));
+                info.set_halign(Align::Start);
+
+                content.pack_start(&prompt, false, false, 0);
+                content.pack_start(&key_entry, false, false, 4);
+                content.pack_start(&info, false, false, 0);
+                content.show_all();
+
+                let _state_clone = Rc::clone(state_rc);
+                let sender_nexus = sender.clone();
+                dialog.connect_response(move |d, resp| {
+                    match resp {
+                        ResponseType::Ok => {
+                            let key = key_entry.text().to_string();
+                            if key.trim().is_empty() { return; }
+                            nexus_btn.set_label(&crate::i18n::t("nexus_connecting"));
+                            nexus_btn.set_sensitive(false);
+                            d.close();
+
+                            // Valida em thread separada usando o sender para voltar à main thread
+                            let key_clone = key.clone();
+                            let s_nexus = sender_nexus.clone();
+                            std::thread::spawn(move || {
+                                let result = crate::nexus::validate_api_key(&key_clone)
+                                    .map(|name| (key_clone, name));
+                                let _ = s_nexus.send_blocking(AppMsg::NexusValidated(result));
+                            });
+                        }
+                        ResponseType::Help => {
+                            let _ = std::process::Command::new("xdg-open")
+                                .arg("https://www.nexusmods.com/users/myaccount?tab=api")
+                                .spawn();
+                        }
+                        _ => { d.close(); }
+                    }
+                });
+                dialog.show_all();
+            }
+            return; // skip update_ui (state já foi devolvido)
+        }
+        AppMsg::NexusValidated(result) => {
+            widgets.nexus_button.set_sensitive(true);
+            match result {
+                Ok((key, name)) => {
+                    state.config.nexus.api_key = Some(key);
+                    state.config.save();
+                    widgets.nexus_button.set_label(&crate::i18n::t("nexus_already_connected"));
+                    state.status_message = format!("{} ({})",
+                        crate::i18n::t("nexus_connect_success"), name);
+                }
+                Err(e) => {
+                    widgets.nexus_button.set_label(&crate::i18n::t("nexus_not_connected"));
+                    state.status_message = e;
                 }
             }
         }
