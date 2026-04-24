@@ -1,8 +1,8 @@
 pub mod app;
 pub mod games;
-pub mod wine;
-pub mod manifests;
 pub mod i18n;
+pub mod manifests;
+pub mod wine;
 
 fn main() {
     println!("Iniciando GamePiLot...");

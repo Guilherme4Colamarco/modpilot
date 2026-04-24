@@ -1,13 +1,13 @@
+use glib::clone;
 use gtk::prelude::*;
 use gtk::{
-    Application, ApplicationWindow, Box as GtkBox, Button, ComboBoxText, Entry,
-    FileChooserAction, FileChooserDialog, Label, Orientation, ResponseType,
-    ScrolledWindow, Separator, Spinner, TextBuffer, TextView, Align, WrapMode, Adjustment,
-    MessageDialog, DialogFlags, MessageType, ButtonsType
+    Adjustment, Align, Application, ApplicationWindow, Box as GtkBox, Button, ButtonsType,
+    ComboBoxText, DialogFlags, Entry, FileChooserAction, FileChooserDialog, Label, MessageDialog,
+    MessageType, Orientation, ResponseType, ScrolledWindow, Separator, Spinner, TextBuffer,
+    TextView, WrapMode,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
-use glib::clone;
 
 #[derive(Clone)]
 struct AppWidgets {
@@ -200,16 +200,20 @@ fn build_ui(app: &Application) {
     };
 
     let state = Rc::new(RefCell::new(state));
-    let (sender, receiver) = glib::MainContext::channel(glib::Priority::DEFAULT);
+    let (sender, receiver) = async_channel::unbounded();
 
     setup_signals(&widgets, &sender);
-    
-    widgets.games_combo.append_text(&crate::i18n::t("no_games_scanned"));
+
+    widgets
+        .games_combo
+        .append_text(&crate::i18n::t("no_games_scanned"));
     widgets.games_combo.set_active(Some(0));
-    widgets.tools_combo.append_text(&crate::i18n::t("no_game_selected"));
+    widgets
+        .tools_combo
+        .append_text(&crate::i18n::t("no_game_selected"));
     widgets.tools_combo.set_active(Some(0));
     widgets.cmds_combo.set_active(Some(0));
-    
+
     // Interceptar o fechamento da janela
     window.connect_delete_event(clone!(@strong state => move |win, _| {
         let is_installing = state.borrow().is_installing;
@@ -239,54 +243,73 @@ fn build_ui(app: &Application) {
     widgets.log_scroll.hide();
 
     let sender_clone = sender.clone();
-    receiver.attach(None, clone!(@strong state, @strong widgets => move |msg| {
-        handle_msg(msg, &state, &widgets, &sender_clone);
-        glib::ControlFlow::Continue
+    glib::MainContext::default().spawn_local(clone!(@strong state, @strong widgets => async move {
+        while let Ok(msg) = receiver.recv().await {
+            handle_msg(msg, &state, &widgets, &sender_clone);
+        }
     }));
 }
 
-fn setup_signals(widgets: &AppWidgets, sender: &glib::Sender<AppMsg>) {
-    widgets.scan_button.connect_clicked(clone!(@strong sender => move |_| {
-        let _ = sender.send(AppMsg::ScanGames);
-    }));
+fn setup_signals(widgets: &AppWidgets, sender: &async_channel::Sender<AppMsg>) {
+    widgets
+        .scan_button
+        .connect_clicked(clone!(@strong sender => move |_| {
+            let _ = sender.send_blocking(AppMsg::ScanGames);
+        }));
 
-    widgets.games_combo.connect_changed(clone!(@strong sender => move |combo| {
-        if let Some(idx) = combo.active() {
-            let _ = sender.send(AppMsg::GameSelected(idx as i32));
-        }
-    }));
+    widgets
+        .games_combo
+        .connect_changed(clone!(@strong sender => move |combo| {
+            if let Some(idx) = combo.active() {
+                let _ = sender.send_blocking(AppMsg::GameSelected(idx as i32));
+            }
+        }));
 
-    widgets.tools_combo.connect_changed(clone!(@strong sender => move |combo| {
-        if let Some(idx) = combo.active() {
-            let _ = sender.send(AppMsg::ToolSelected(idx as i32));
-        }
-    }));
+    widgets
+        .tools_combo
+        .connect_changed(clone!(@strong sender => move |combo| {
+            if let Some(idx) = combo.active() {
+                let _ = sender.send_blocking(AppMsg::ToolSelected(idx as i32));
+            }
+        }));
 
-    widgets.install_button.connect_clicked(clone!(@strong sender => move |_| {
-        let _ = sender.send(AppMsg::InstallDependencies);
-    }));
+    widgets
+        .install_button
+        .connect_clicked(clone!(@strong sender => move |_| {
+            let _ = sender.send_blocking(AppMsg::InstallDependencies);
+        }));
 
-    widgets.launch_button.connect_clicked(clone!(@strong sender => move |_| {
-        let _ = sender.send(AppMsg::LaunchTool);
-    }));
+    widgets
+        .launch_button
+        .connect_clicked(clone!(@strong sender => move |_| {
+            let _ = sender.send_blocking(AppMsg::LaunchTool);
+        }));
 
-    widgets.prefix_entry.connect_changed(clone!(@strong sender => move |entry| {
-        let _ = sender.send(AppMsg::PrefixPathChanged(entry.text().to_string()));
-    }));
+    widgets
+        .prefix_entry
+        .connect_changed(clone!(@strong sender => move |entry| {
+            let _ = sender.send_blocking(AppMsg::PrefixPathChanged(entry.text().to_string()));
+        }));
 
-    widgets.browse_button.connect_clicked(clone!(@strong sender => move |_| {
-        let _ = sender.send(AppMsg::BrowsePrefix);
-    }));
+    widgets
+        .browse_button
+        .connect_clicked(clone!(@strong sender => move |_| {
+            let _ = sender.send_blocking(AppMsg::BrowsePrefix);
+        }));
 
-    widgets.cmds_combo.connect_changed(clone!(@strong sender => move |combo| {
-        if let Some(idx) = combo.active() {
-            let _ = sender.send(AppMsg::CommandSelected(idx as i32));
-        }
-    }));
+    widgets
+        .cmds_combo
+        .connect_changed(clone!(@strong sender => move |combo| {
+            if let Some(idx) = combo.active() {
+                let _ = sender.send_blocking(AppMsg::CommandSelected(idx as i32));
+            }
+        }));
 
-    widgets.exec_button.connect_clicked(clone!(@strong sender => move |_| {
-        let _ = sender.send(AppMsg::ExecuteCommand);
-    }));
+    widgets
+        .exec_button
+        .connect_clicked(clone!(@strong sender => move |_| {
+            let _ = sender.send_blocking(AppMsg::ExecuteCommand);
+        }));
 }
 
 fn update_ui(state: &AppState, widgets: &AppWidgets) {
@@ -301,40 +324,59 @@ fn update_ui(state: &AppState, widgets: &AppWidgets) {
     widgets.status_label.set_label(&state.status_message);
 
     if state.selected_tool_name.is_empty() {
-        widgets.install_button.set_label(&crate::i18n::t("install_tool"));
+        widgets
+            .install_button
+            .set_label(&crate::i18n::t("install_tool"));
     } else {
-        widgets.install_button.set_label(&crate::i18n::t_install(&state.selected_tool_name));
+        widgets
+            .install_button
+            .set_label(&crate::i18n::t_install(&state.selected_tool_name));
     }
-    widgets.install_button.set_sensitive(!state.is_installing && !state.selected_tool_name.is_empty());
+    widgets
+        .install_button
+        .set_sensitive(!state.is_installing && !state.selected_tool_name.is_empty());
 
-    widgets.launch_button.set_label(&crate::i18n::t_launch(&state.selected_tool_name));
-    widgets.launch_button.set_visible(!state.selected_tool_name.is_empty());
-    widgets.launch_button.set_sensitive(state.tool_is_installed && !state.is_installing);
+    widgets
+        .launch_button
+        .set_label(&crate::i18n::t_launch(&state.selected_tool_name));
+    widgets
+        .launch_button
+        .set_visible(!state.selected_tool_name.is_empty());
+    widgets
+        .launch_button
+        .set_sensitive(state.tool_is_installed && !state.is_installing);
 
     if state.install_log_visible {
         widgets.log_scroll.show();
     } else {
         widgets.log_scroll.hide();
     }
-    
+
     widgets.log_buffer.set_text(&state.install_log.join("\n"));
-    
+
     if widgets.prefix_entry.text().as_str() != state.prefix_path {
         widgets.prefix_entry.set_text(&state.prefix_path);
     }
 }
 
-fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidgets, sender: &glib::Sender<AppMsg>) {
+fn handle_msg(
+    msg: AppMsg,
+    state_rc: &Rc<RefCell<AppState>>,
+    widgets: &AppWidgets,
+    sender: &async_channel::Sender<AppMsg>,
+) {
     let mut state = state_rc.borrow_mut();
     match msg {
         AppMsg::ScanGames => {
             let games = crate::games::scan_all_games();
             widgets.games_combo.remove_all();
             state.scanned_games = games.clone();
-            
+
             if games.is_empty() {
                 state.status_message = crate::i18n::t("no_games_found");
-                widgets.games_combo.append_text(&crate::i18n::t("no_games_found_short")); 
+                widgets
+                    .games_combo
+                    .append_text(&crate::i18n::t("no_games_found_short"));
                 widgets.games_combo.set_active(Some(0));
             } else {
                 for (game_name, _prefix, _app_id) in &games {
@@ -351,7 +393,7 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
             state.selected_tool_name.clear();
             state.selected_tool_executable = None;
             state.tool_is_installed = false;
-            
+
             let game_info = state.scanned_games.get(index as usize).cloned();
             if let Some((game_name, prefix_opt, game_app_id)) = game_info {
                 if let Some(prefix) = prefix_opt {
@@ -367,7 +409,9 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 for manifest in &state.manifests {
                     let mut score = 0usize;
 
-                    if let (Some(mid), Some(gid)) = (&manifest.identifiers.steam_app_id, game_app_id) {
+                    if let (Some(mid), Some(gid)) =
+                        (&manifest.identifiers.steam_app_id, game_app_id)
+                    {
                         if mid == &gid {
                             score = SCORE_APP_ID;
                         }
@@ -395,10 +439,14 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 if let Some(manifest) = best_manifest {
                     for tool in manifest.tools.values() {
                         state.current_tools.push(tool.clone());
-                        widgets.tools_combo.append_text(&format!("{} - {}", tool.name, tool.description));
+                        widgets
+                            .tools_combo
+                            .append_text(&format!("{} - {}", tool.name, tool.description));
                     }
                 } else {
-                    widgets.tools_combo.append_text(&crate::i18n::t("no_mod_manifest_found"));
+                    widgets
+                        .tools_combo
+                        .append_text(&crate::i18n::t("no_mod_manifest_found"));
                 }
             }
         }
@@ -409,7 +457,7 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 state.selected_tool_download = tool.download_url;
                 state.selected_tool_name = tool.name;
                 state.selected_tool_executable = tool.executable_path;
-                
+
                 if let Some(exe) = &state.selected_tool_executable {
                     let path = std::path::Path::new(&state.prefix_path).join(exe);
                     state.tool_is_installed = path.exists();
@@ -425,7 +473,9 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 let full_path = std::path::Path::new(&state.prefix_path).join(exe);
                 let path_str = full_path.to_string_lossy().to_string();
                 match crate::wine::execute_wine_command(&state.prefix_path, &path_str) {
-                    Ok(_) => state.status_message = crate::i18n::t_started(&state.selected_tool_name),
+                    Ok(_) => {
+                        state.status_message = crate::i18n::t_started(&state.selected_tool_name)
+                    }
                     Err(e) => state.status_message = crate::i18n::t_error_launching(&e.to_string()),
                 }
             }
@@ -449,18 +499,18 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 state.install_log.clear();
                 state.install_log.push(crate::i18n::t("preparing"));
                 state.install_log_visible = true;
-                
+
                 let s_prog = sender.clone();
                 let s_done = sender.clone();
                 let deps = state.selected_tool_deps.clone();
                 let download = state.selected_tool_download.clone();
                 let prefix = state.prefix_path.clone();
-                
+
                 std::thread::spawn(move || {
                     crate::wine::install_dependencies(&prefix, deps, download, move |msg| {
-                        let _ = s_prog.send(AppMsg::InstallProgress(msg));
+                        let _ = s_prog.send_blocking(AppMsg::InstallProgress(msg));
                     });
-                    let _ = s_done.send(AppMsg::InstallFinished);
+                    let _ = s_done.send_blocking(AppMsg::InstallFinished);
                 });
             }
         }
@@ -492,7 +542,7 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
         }
         AppMsg::PrefixPathChanged(path) => {
             state.prefix_path = path;
-            
+
             if let Some(exe) = &state.selected_tool_executable {
                 let full_path = std::path::Path::new(&state.prefix_path).join(exe);
                 state.tool_is_installed = full_path.exists();
@@ -513,7 +563,9 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 if response == ResponseType::Accept {
                     if let Some(file) = dialog.file() {
                         if let Some(path) = file.path() {
-                            let _ = s.send(AppMsg::PrefixPathChanged(path.to_string_lossy().to_string()));
+                            let _ = s.send_blocking(AppMsg::PrefixPathChanged(
+                                path.to_string_lossy().to_string(),
+                            ));
                         }
                     }
                 }
@@ -532,8 +584,12 @@ fn handle_msg(msg: AppMsg, state_rc: &Rc<RefCell<AppState>>, widgets: &AppWidget
                 state.status_message = crate::i18n::t("enter_wine_prefix");
             } else {
                 state.status_message = crate::i18n::t_executing(&state.selected_command);
-                match crate::wine::execute_wine_command(&state.prefix_path, &state.selected_command) {
-                    Ok(_) => state.status_message = crate::i18n::t_command_started(&state.selected_command),
+                match crate::wine::execute_wine_command(&state.prefix_path, &state.selected_command)
+                {
+                    Ok(_) => {
+                        state.status_message =
+                            crate::i18n::t_command_started(&state.selected_command)
+                    }
                     Err(e) => state.status_message = crate::i18n::t_error(&e.to_string()),
                 }
             }

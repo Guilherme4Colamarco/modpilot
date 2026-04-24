@@ -1,22 +1,33 @@
-use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
 
 /// Filtra ruído do Wine (fixme:, warn:, trace:, etc.) do stderr e retorna
 /// apenas linhas que representam erros reais. Retorna None se tudo for ruído.
 fn extract_real_error(stderr: &str) -> Option<String> {
-    let noise_prefixes = ["fixme:", "warn:", "trace:", "info:", "err:fixme", "winediag:"];
+    let noise_prefixes = [
+        "fixme:",
+        "warn:",
+        "trace:",
+        "info:",
+        "err:fixme",
+        "winediag:",
+    ];
     let real_errors: Vec<&str> = stderr
         .lines()
         .filter(|l| {
             let lower = l.trim().to_lowercase();
-            !noise_prefixes.iter().any(|p| lower.contains(p))
-                && !l.trim().is_empty()
+            !noise_prefixes.iter().any(|p| lower.contains(p)) && !l.trim().is_empty()
         })
         .collect();
     if real_errors.is_empty() {
         None
     } else {
-        Some(real_errors.last().unwrap_or(&"erro desconhecido").to_string())
+        Some(
+            real_errors
+                .last()
+                .unwrap_or(&"erro desconhecido")
+                .to_string(),
+        )
     }
 }
 
@@ -41,8 +52,12 @@ pub fn check_prerequisites() -> Vec<String> {
 
 /// Instala dependências winetricks reais e opcionalmente baixa/executa uma ferramenta.
 /// O `progress_callback` é chamado para cada etapa para atualizar a UI.
-pub fn install_dependencies<F>(prefix: &str, dependencies: Vec<String>, download_url: Option<String>, progress_callback: F)
-where
+pub fn install_dependencies<F>(
+    prefix: &str,
+    dependencies: Vec<String>,
+    download_url: Option<String>,
+    progress_callback: F,
+) where
     F: Fn(String),
 {
     progress_callback(format!("Preparando o prefixo: {}", prefix));
@@ -50,8 +65,13 @@ where
     // Verificar pré-requisitos
     let missing = check_prerequisites();
     if !missing.is_empty() {
-        progress_callback(format!("❌ Ferramentas não encontradas no PATH: {}", missing.join(", ")));
-        progress_callback("Instale com: sudo pacman -S wine winetricks (ou equivalente)".to_string());
+        progress_callback(format!(
+            "❌ Ferramentas não encontradas no PATH: {}",
+            missing.join(", ")
+        ));
+        progress_callback(
+            "Instale com: sudo pacman -S wine winetricks (ou equivalente)".to_string(),
+        );
         return;
     }
 
@@ -137,10 +157,13 @@ where
             }
             Ok(_) => {
                 progress_callback(crate::i18n::t_failed_download(&url));
+                progress_callback(crate::i18n::t_redirecting_browser());
+                let _ = Command::new("xdg-open").arg(&url).spawn();
             }
             Err(e) => {
                 progress_callback(format!("❌ wget não encontrado ou erro: {}", e));
-                progress_callback("Tente: sudo pacman -S wget".to_string());
+                progress_callback(crate::i18n::t_redirecting_browser());
+                let _ = Command::new("xdg-open").arg(&url).spawn();
             }
         }
     }

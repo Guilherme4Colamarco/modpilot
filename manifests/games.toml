@@ -15,13 +15,20 @@ heroic_names = ["Grand Theft Auto V", "GTA V"]
 name = "OpenIV"
 description = "Gerenciador principal para mods da engine RAGE"
 winetricks = ["dotnet48", "corefonts", "msxml6", "d3dcompiler_47"]
-download_url = "https://example.com/openivsetup.exe"
+download_url = "https://openiv.com/WebSetup/oivsetup.exe"
 executable_path = "drive_c/Program Files/OpenIV/OpenIV.exe"
 
 [games.gtav.tools.scripthookv]
 name = "ScriptHookV"
 description = "Permite o uso de scripts .asi no jogo"
 winetricks = ["vcrun2022"]
+download_url = "http://www.dev-c.com/files/ScriptHookV_1.0.3095.0.zip"
+
+[games.gtav.tools.scripthookvdotnet]
+name = "ScriptHookVDotNet"
+description = "Permite mods .NET no GTA V"
+winetricks = ["dotnet48"]
+download_url = "https://github.com/scripthookvdotnet/scripthookvdotnet/releases/download/v3.6.0/ScriptHookVDotNet.zip"
 
 # ── Dishonored ───────────────────────────────────────────────
 
@@ -69,6 +76,7 @@ download_url = "https://www.nexusmods.com/dishonored2/mods/40"
 name = "Cheat Engine / Treinadores"
 description = "Dependências para treinadores e tabelas de Cheat Engine"
 winetricks = ["dotnet48", "vcrun2022"]
+download_url = "https://github.com/cheat-engine/cheat-engine/releases/download/7.5/CheatEngine75.exe"
 
 [games.dishonored2.tools.reshade]
 name = "ReShade"
@@ -112,12 +120,12 @@ download_url = "https://skse.silverlock.org/beta/skse64_2_02_06.7z"
 name = "Vortex Mod Manager"
 description = "Gerenciador de mods oficial do Nexus Mods"
 winetricks = ["dotnet48", "vcrun2022", "d3dcompiler_47"]
-download_url = "https://github.com/Nexus-Mods/Vortex/releases/latest/download/vortex-setup-1.13.8.exe"
+download_url = "https://github.com/Nexus-Mods/Vortex/releases/download/v1.16.9/vortex-setup-1.16.9.exe"
 executable_path = "drive_c/Program Files/Black Tree Gaming Ltd/Vortex/Vortex.exe"
 
 [games.skyrim.tools.modorganizer2]
 name = "Mod Organizer 2 (MO2)"
 description = "Gerenciador avançado de mods com sistema de perfis virtuais"
 winetricks = ["dotnet48", "vcrun2022"]
-download_url = "https://github.com/ModOrganizer2/modorganizer/releases/latest/download/Mod.Organizer-2.5.3.exe"
+download_url = "https://github.com/ModOrganizer2/modorganizer/releases/download/v2.5.2/Mod.Organizer-2.5.2.exe"
 executable_path = "drive_c/Modding/MO2/ModOrganizer.exe"

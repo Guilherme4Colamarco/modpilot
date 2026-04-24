@@ -31,7 +31,7 @@ pub fn get_language() -> Language {
 
 pub fn t(key: &str) -> String {
     let lang = get_language();
-    
+
     let text = match key {
         // Main UI
         "scan_games" => match lang {
@@ -215,7 +215,7 @@ pub fn t(key: &str) -> String {
         // Se a chave não for encontrada, retorna ela mesma
         _ => return key.to_string(),
     };
-    
+
     text.to_string()
 }
 
@@ -242,10 +242,22 @@ pub fn t_launch(name: &str) -> String {
 
 pub fn t_tools_not_found(missing: &str) -> String {
     match get_language() {
-        Language::Portuguese => format!("⚠️ Ferramentas não encontradas: {}. Instale antes de usar.", missing),
-        Language::Spanish => format!("⚠️ Herramientas no encontradas: {}. Instálelas antes de usar.", missing),
-        Language::Italian => format!("⚠️ Strumenti non trovati: {}. Installare prima dell'uso.", missing),
-        Language::Russian => format!("⚠️ Инструменты не найдены: {}. Установите их перед использованием.", missing),
+        Language::Portuguese => format!(
+            "⚠️ Ferramentas não encontradas: {}. Instale antes de usar.",
+            missing
+        ),
+        Language::Spanish => format!(
+            "⚠️ Herramientas no encontradas: {}. Instálelas antes de usar.",
+            missing
+        ),
+        Language::Italian => format!(
+            "⚠️ Strumenti non trovati: {}. Installare prima dell'uso.",
+            missing
+        ),
+        Language::Russian => format!(
+            "⚠️ Инструменты не найдены: {}. Установите их перед использованием.",
+            missing
+        ),
         Language::English => format!("⚠️ Tools not found: {}. Install before using.", missing),
     }
 }
@@ -368,5 +380,19 @@ pub fn t_failed_install(name: &str, err: &str) -> String {
         Language::Italian => format!("❌ Impossibile installare {}: {}", name, err),
         Language::Russian => format!("❌ Ошибка при установке {}: {}", name, err),
         Language::English => format!("❌ Failed to install {}: {}", name, err),
+    }
+}
+
+pub fn t_redirecting_browser() -> String {
+    match get_language() {
+        Language::Portuguese => {
+            "🌐 Redirecionando para o navegador para download manual...".to_string()
+        }
+        Language::Spanish => "🌐 Redirigiendo al navegador para descarga manual...".to_string(),
+        Language::Italian => {
+            "🌐 Reindirizzamento al browser per il download manuale...".to_string()
+        }
+        Language::Russian => "🌐 Перенаправление в браузер для ручной загрузки...".to_string(),
+        Language::English => "🌐 Redirecting to browser for manual download...".to_string(),
     }
 }
